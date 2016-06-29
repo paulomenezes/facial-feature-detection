@@ -22,11 +22,8 @@ ofstream myfile;
 string names[5] { "HD", "HT", "HT2", "HTR", "HPF" };
 
 CascadeClassifier classifiers[5];
-//CascadeClassifier HT;
-//CascadeClassifier HT2;
-//CascadeClassifier HTR;
-//CascadeClassifier HPF;
 CascadeClassifier eyesCascade;
+CascadeClassifier smilesCascade;
 
 void findFace(string name)
 {
@@ -37,7 +34,7 @@ void findFace(string name)
 
 	equalizeHist(image, image);
 
-	for (int l = 0; l < 5; l++)
+	for (int l = 0; l < 1; l++)
 	{
 		vector<Rect> faces;
 		vector<Rect> rectangles;
@@ -48,6 +45,10 @@ void findFace(string name)
 
 		Mat output;
 		cvtColor(image, output, CV_GRAY2BGR);
+
+		int countMouth = 0;
+		int totalMouth = 0;
+		vector<vector<Rect>> faceMouth;
 
 		for (int i = 0; i < faces.size(); ++i) {
 			// Transformar quadrado para retangulos
@@ -73,12 +74,6 @@ void findFace(string name)
 
 			faceEyes.push_back(eyes);
 
-			if (l == 4) {
-				if (eyes.size() > 0) {
-
-				}
-			}
-
 			// Desenha os olhos encontrados e guarda as posições
 			for (int j = 0; j < eyes.size(); ++j)
 			{
@@ -103,14 +98,14 @@ void findFace(string name)
 		}
 		else
 		{
-			for (int i = 0; i < 1; ++i)
+			for (int i = 0; i < faces.size(); ++i)
 			{
 				int dEye = rectangles[i].width / 1.865; // 2.425; //
 				int yEye = eyeAvg;
 
 				float values[10] = { 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5 };
 
-				for (int k = 0; k < 10; k++)
+				for (int k = 9; k < 10; k++)
 				{
 					dEye = rectangles[i].width * values[k];
 
@@ -118,7 +113,7 @@ void findFace(string name)
 					// Usa apenas a média para calcular a posição
 					if (faceEyes[i].size() == 0 || faceEyes[i].size() > 2)
 					{
-						//rectangle(output, Rect(rectangles[i].x + (rectangles[i].width / 2) - dEye / 2, faces[i].y + yEye, dEye, 1), Scalar(255, 255, 0));
+						rectangle(output, Rect(rectangles[i].x + (rectangles[i].width / 2) - dEye / 2, faces[i].y + yEye, dEye, 1), Scalar(255, 255, 0));
 					}
 					else
 					{
@@ -126,19 +121,63 @@ void findFace(string name)
 						yEye = faceEyes[i][0].y + (faceEyes[i][0].height / 2);
 
 						// Caso contrário, usa a posição baseada no olho
-						//rectangle(output, Rect(rectangles[i].x + (rectangles[i].width / 2) - dEye / 2, faces[i].y + yEye, dEye, 1), Scalar(255, 0, 255));
+						rectangle(output, Rect(rectangles[i].x + (rectangles[i].width / 2) - dEye / 2, faces[i].y + yEye, dEye, 1), Scalar(255, 0, 255));
 					}
+				}
 
-					myfile << names[l] << " -- " << values[k] << " : ";
-					myfile << (rectangles[i].x + (rectangles[i].width / 2) - dEye / 2) + dEye << " ";
-					myfile << faces[i].y + yEye << " ";
-					myfile << rectangles[i].x + (rectangles[i].width / 2) - dEye / 2 << " ";
-					myfile << faces[i].y + yEye << " " << faces.size() << "\n";
+				// Calcula os sorrisos
+				Mat faceROI(image, faces[i]);
+				vector<Rect> smile;
+				vector<int> numDetection2;
+				smilesCascade.detectMultiScale(faceROI, smile, numDetection2, 1.1, 10);
+
+				for (int j = 0; j < smile.size(); ++j)
+				{
+					rectangle(output, Rect(smile[j].tl() + faces[i].tl(), smile[j].size()), Scalar(0, 0, 0));
+
+					// Calcula a proporção do tamanho da boca
+					int m = dEye / 1.618;
+
+					// se a boca estiver numa posição correta
+					if (smile[j].y - yEye > 15)
+					{
+						// Salva os valores para calcular a média
+						countMouth++;
+						totalMouth += smile[j].y + smile[j].height / 2;
+
+						// Desenha
+						rectangle(output, Rect(faces[i].x + faces[i].width / 2 - m / 2, faces[i].y + smile[j].y + smile[j].height / 2, m, 1), Scalar(255, 0, 0));
+						vector<Rect> empty;
+						faceMouth.push_back(empty);
+					}
+					else
+						faceMouth.push_back(smile); // caso contrário, salva
 				}
 			}
 		}
 
-		//imshow("Image " + names[l], output);
+		if (countMouth > 0)
+		{
+			// Calcula a média do tamanho da boca
+			int mAvg = totalMouth / countMouth;
+
+			// Desenha a distância da boca para as faces restantes
+			for (int i = 0; i < faces.size(); i++)
+			{
+				// Calcula a média da distância dos olhos
+				int dEyeAvg = rectangles[i].width * 0.5;
+				
+				// Calcula a proporção do tamanho da boca
+				int m = dEyeAvg / 1.618;
+
+				if (faceMouth[i].size() > 0)
+				{
+					rectangle(output, Rect(faces[i].x + faces[i].width / 2 - m / 2, faces[i].y + mAvg, m, 1), Scalar(0, 0, 255));
+				}
+			}
+		}
+
+		imshow("Image", output);
 	}
 }
 
@@ -146,10 +185,7 @@ int image = 0;
 
 void on_trackbar(int, void*)
 {
-	cout << "Imagem: " << image << "\n";
-
 	stringstream name;
-
 	name << "data/BioID-FaceDatabase-V1.2/BioID_" << setfill('0') << setw(4) << image << ".pgm";
 
 	findFace(name.str());
@@ -164,46 +200,13 @@ int main()
 	classifiers[4].load("haarcascade_profileface.xml");
 
 	eyesCascade.load("haarcascade_eye.xml");
-	//smilesCascade.load("haarcascade_smile.xml");
+	smilesCascade.load("haarcascade_smile.xml");
 
-	myfile.open("bioID7.txt");
-	for (int i = 0; i < 1521; i++)
-	{
-		stringstream name;
-		name << "data/BioID-FaceDatabase-V1.2/BioID_" << setfill('0') << setw(4) << i << ".pgm";
-		findFace(name.str());
-	}
-	myfile.close();
+	stringstream name;
+	name << "data/BioID-FaceDatabase-V1.2/BioID_0000.pgm";
+	findFace(name.str());
 	
-	//createTrackbar("Choose image", "Image", &image, 30, on_trackbar);
-
-	/// Show some stuff
-	// on_trackbar(image, 0);
-
-	//findFace("data/BioID-FaceDatabase-V1.2/BioID_0002.pgm");
-	//findFace("data/all.png");
-	/*findFace("data/002_2.jpg");
-	findFace("data/002_3.jpg");
-	findFace("data/002_4.jpg");*/
-
-	/*
-	for (int i = 0; i < 1521; i++)
-	{
-		try {
-			myfile << "Image: " << i << "\n";
-
-			stringstream name;
-			name << "data/BioID-FaceDatabase-V1.2/BioID_" << setfill('0') << setw(4) << i << ".pgm";
-			findFace2(name.str());
-
-			myfile << "\n";
-		}
-		catch (...) 
-		{
-			myfile << "Image: " << i << " error" << "\n";
-		}
-	}
-	myfile.close();*/
+	createTrackbar("Image", "Image", &image, 40, on_trackbar);
 
 	waitKey();
 
